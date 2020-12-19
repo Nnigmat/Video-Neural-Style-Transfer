@@ -1,7 +1,9 @@
 import numpy as np
 import scipy.io
 import scipy.misc
-import tensorflow as tf
+from imageio import imread, imsave
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from argparse import ArgumentParser
 import os
 try:
@@ -22,7 +24,7 @@ def main():
 
     if content_is_video:
         # parameters for Shi-Tomasi feature detection
-        feature_params = dict( 
+        feature_params = dict(
             maxCorners=500,
             qualityLevel=0.001,
             minDistance=1,
@@ -31,7 +33,7 @@ def main():
             )
 
         # parameters for Lucas-Kanade optical flow algorithm
-        lk_params = dict( 
+        lk_params = dict(
             winSize=(50, 50),
             maxLevel=0,
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
@@ -48,8 +50,8 @@ def main():
 
         # detect feature points
         prev_frame_points = cv2.goodFeaturesToTrack(
-            prev_frame_gray, 
-            mask=None, 
+            prev_frame_gray,
+            mask=None,
             **feature_params
             )
 
@@ -72,13 +74,12 @@ def main():
         print("        frame output path: {0}".format(args.frame_output_path.format("<frame_index>")))
         print("         epoch input path: {0}".format(args.epoch_input_path.format("<frame_index>")))
         print("        epoch output path: {0}\n\n".format(args.epoch_output_path.format("<frame_index>","<epoch_index>")))
-    
 
     cnn_factory = CNNFactory(args.vgg_path)
-    style_image = np.array([scipy.misc.imread(args.style_path).astype(np.float32)])
+    style_image = np.array([imread(args.style_path).astype(np.float32)])
     frame_index = 0
     continuing = True
-    
+
     while continuing:
         # get next content image
         if content_is_video:
@@ -90,15 +91,15 @@ def main():
                     content_image = None
                     continuing = False
                     break
-                
+
                 curr_frame_gray = cv2.cvtColor(content_image, cv2.COLOR_BGR2GRAY)
                 # skip current content_image if too similar to previous content_image
                 if np.count_nonzero(curr_frame_gray - prev_frame_gray) < 5000 and frame_index > 0:
                     frame_returned = False
                     continue
 
-                scipy.misc.imsave(args.frame_input_path.format(frame_index), content_image)
-                scipy.misc.imsave(args.epoch_input_path.format(frame_index), content_image)
+                imsave(args.frame_input_path.format(frame_index), content_image)
+                imsave(args.epoch_input_path.format(frame_index), content_image)
 
                 # compute optical flow
                 curr_frame_points, st, err = cv2.calcOpticalFlowPyrLK(prev_frame_gray, curr_frame_gray, prev_frame_points, None, **lk_params)
@@ -117,8 +118,8 @@ def main():
 
         elif not content_is_video:
             continuing = False
-            content_image = np.array([scipy.misc.imread(args.content_path).astype(np.float32)])
-       
+            content_image = np.array([imread(args.content_path).astype(np.float32)])
+
         if content_image is None:
             break
 
@@ -128,7 +129,7 @@ def main():
             content_CNN = cnn_factory.newConvNet(content_image)
             content_layer = 'relu4_2'
             target_content = content_CNN[content_layer].eval()
-            
+
             # compute style features
             style_CNN = cnn_factory.newConvNet(style_image)
             target_style = {}
@@ -138,13 +139,13 @@ def main():
                 style_layer = style_CNN[layer].eval()
                 style_layer = np.reshape(style_layer, (-1, style_layer.shape[3]))
                 target_style[layer] = np.matmul(np.transpose(style_layer), style_layer) / style_layer.size
-            
+
             if frame_index == 0:
                 occlusion = np.zeros(content_image.shape, dtype=np.float32)
-                
+
             # intialize the output image
             if frame_index == 0 and args.initial_path != 0:
-                initial_image = np.array([scipy.misc.imread(args.initial_path).astype(np.float32)])
+                initial_image = np.array([imread(args.initial_path).astype(np.float32)])
             else:
                 initial_image = tf.truncated_normal(content_image.shape, mean=250, stddev=3.0) / 256.0
             output_image = tf.Variable(initial_image)
@@ -177,7 +178,7 @@ def main():
             # define total loss as the sum of all losses
             for i in range(len(losses)):
                 total_loss += losses[i]
-            
+
             # optimize over total loss
             optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(total_loss)
             best_loss = float('inf')
@@ -222,17 +223,17 @@ def main():
 
                         # produce output image and save
                         out = np.clip(best_img.reshape(content_image.shape[1:]), 0, 255).astype(np.uint8)
-                        scipy.misc.imsave(args.output_path.format(epoch), out)
+                        imsave(args.output_path.format(epoch), out)
 
                         # save output image on final epoch
                         if epoch == args.max_epochs:
-                            scipy.misc.imsave(args.output_path.format(""), out)
+                            imsave(args.output_path.format(""), out)
                             frame_index += 1
 
                             if content_is_video:
                                 prev_image = out
                                 prev_frame_points = curr_frame_points
-            
+
 
 def parse_args():
     parser = ArgumentParser()
