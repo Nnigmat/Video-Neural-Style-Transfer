@@ -14,6 +14,7 @@ except ImportError:
 def main():
     # parse command line arguments
     args = parse_args()
+    print(args)
     content_is_video = args.content_type[0] == 'v'
     # make output directories if they don't exist
 
@@ -222,11 +223,13 @@ def main():
                             best_img = output_image.eval()
 
                         # produce output image and save
-                        out = np.clip(best_img.reshape(content_image.shape[1:]), 0, 255).astype(np.uint8)
+                        '''
                         imsave(args.output_path.format(epoch), out)
+                        '''
 
                         # save output image on final epoch
                         if epoch == args.max_epochs:
+                            out = np.clip(best_img.reshape(content_image.shape[1:]), 0, 255).astype(np.uint8)
                             imsave(args.output_path.format(""), out)
                             frame_index += 1
 
